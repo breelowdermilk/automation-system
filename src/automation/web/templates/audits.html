@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Quality Audits - Automation Control Panel{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="flex justify-between items-center mb-4">
+        <h2>Audit Summary (7 Days)</h2>
+        <form action="/audits/run" method="post">
+            <button type="submit" class="btn btn-primary">Run Audit Now</button>
+        </form>
+    </div>
+
+    {% if summary.models %}
+    <div class="stat-grid">
+        {% for model in summary.models %}
+        <div class="stat-box">
+            <div class="number">{{ "%.1f"|format(model.avg_audit_score) }}</div>
+            <div class="label">{{ model.model }} ({{ model.total_requests }} items)</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Recent Audits</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>File</th>
+                <th>Original Model</th>
+                <th>Result</th>
+                <th>Accuracy</th>
+                <th>Usefulness</th>
+                <th>Would Change?</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for audit in audits %}
+            <tr>
+                <td class="time-ago">{{ audit.timestamp }}</td>
+                <td class="truncate mono">{{ audit.file_path.split('/')[-1] if audit.file_path else '-' }}</td>
+                <td>{{ audit.original_model }}</td>
+                <td class="truncate mono">{{ audit.result or '-' }}</td>
+                <td>
+                    <span class="score">{{ audit.accuracy_score }} <span class="star">★</span></span>
+                </td>
+                <td>
+                    <span class="score">{{ audit.usefulness_score }} <span class="star">★</span></span>
+                </td>
+                <td>
+                    {% if audit.would_rename %}
+                    <span class="badge badge-warning">Yes</span>
+                    {% else %}
+                    <span class="badge badge-success">No</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% if audit.suggested_improvement %}
+            <tr>
+                <td colspan="7" style="padding-left: 40px; color: var(--text-secondary);">
+                    Suggestion: {{ audit.suggested_improvement }}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

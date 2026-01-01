@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Statistics - Automation Control Panel{% endblock %}
+
+{% block content %}
+<div class="flex gap-2 mb-4">
+    <a href="?days=7" class="btn {% if days == 7 %}btn-primary{% else %}btn-secondary{% endif %}">7 Days</a>
+    <a href="?days=30" class="btn {% if days == 30 %}btn-primary{% else %}btn-secondary{% endif %}">30 Days</a>
+    <a href="?days=90" class="btn {% if days == 90 %}btn-primary{% else %}btn-secondary{% endif %}">90 Days</a>
+</div>
+
+<div class="card">
+    <h2>By Model</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Model</th>
+                <th>Backend</th>
+                <th>Total Requests</th>
+                <th>Success Rate</th>
+                <th>Avg Latency</th>
+                <th>Avg Score</th>
+                <th>Total Cost</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for stat in model_stats %}
+            <tr>
+                <td><strong>{{ stat.model }}</strong></td>
+                <td>{{ stat.backend }}</td>
+                <td>{{ stat.total_requests }}</td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div class="progress-bar" style="width: 100px;">
+                            <div class="fill" style="width: {{ stat.success_rate or 0 }}%;"></div>
+                        </div>
+                        {{ "%.1f"|format(stat.success_rate or 0) }}%
+                    </div>
+                </td>
+                <td>{{ "%.2f"|format((stat.avg_latency_ms or 0) / 1000) }}s</td>
+                <td>{{ "%.1f"|format(stat.avg_audit_score or 0) }}/5</td>
+                <td>${{ "%.4f"|format(stat.total_cost_usd or 0) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>By Task Type</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Task Type</th>
+                <th>Total</th>
+                <th>Success Rate</th>
+                <th>Avg Latency</th>
+                <th>Avg Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for stat in task_stats %}
+            <tr>
+                <td>
+                    {% if stat.task_type == 'screenshot_rename' %}📸{% endif %}
+                    {% if stat.task_type == 'audio_transcription' %}🎤{% endif %}
+                    {% if stat.task_type == 'inbox_processing' %}📥{% endif %}
+                    {{ stat.task_type }}
+                </td>
+                <td>{{ stat.total_requests }}</td>
+                <td>{{ "%.1f"|format(stat.success_rate or 0) }}%</td>
+                <td>{{ "%.2f"|format((stat.avg_latency_ms or 0) / 1000) }}s</td>
+                <td>{{ "%.1f"|format(stat.avg_audit_score or 0) }}/5</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

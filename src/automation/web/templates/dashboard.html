@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div id="dashboard-stats" hx-get="/dashboard-stats" hx-trigger="refresh">
+    <div class="card">
+        <h2>Today's Activity</h2>
+        <div class="stat-grid">
+            <div class="stat-box">
+                <div class="number">{{ today.screenshots or 0 }}</div>
+                <div class="label">Screenshots</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">{{ today.audio or 0 }}</div>
+                <div class="label">Audio Memos</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">{{ today.inbox or 0 }}</div>
+                <div class="label">Inbox Files</div>
+            </div>
+            <div class="stat-box">
+                <div class="number">{{ "%.1f"|format(today.success_rate or 0) }}%</div>
+                <div class="label">Success Rate</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Model Usage (Last 7 Days)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Model</th>
+                <th>Backend</th>
+                <th>Requests</th>
+                <th>Success Rate</th>
+                <th>Avg Latency</th>
+                <th>Avg Score</th>
+                <th>Cost</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for stat in model_stats %}
+            <tr>
+                <td><strong>{{ stat.model }}</strong></td>
+                <td><span class="badge badge-success">{{ stat.backend }}</span></td>
+                <td>{{ stat.total_requests }}</td>
+                <td>{{ "%.1f"|format(stat.success_rate or 0) }}%</td>
+                <td>{{ "%.1f"|format((stat.avg_latency_ms or 0) / 1000) }}s</td>
+                <td>
+                    {% if stat.avg_audit_score %}
+                    <span class="score">
+                        {{ "%.1f"|format(stat.avg_audit_score) }}
+                        <span class="star">★</span>
+                    </span>
+                    {% else %}
+                    <span class="time-ago">-</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if stat.total_cost_usd %}
+                    ${{ "%.3f"|format(stat.total_cost_usd) }}
+                    {% else %}
+                    <span class="badge badge-success">$0 (sub)</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <div class="flex justify-between items-center mb-4">
+        <h2>Recent Processing</h2>
+        <a href="/logs" class="btn btn-secondary">View All →</a>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Model</th>
+                <th>Result</th>
+                <th>Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in recent_logs %}
+            <tr>
+                <td class="time-ago">{{ log.timestamp }}</td>
+                <td><span class="badge badge-success">{{ log.task_type }}</span></td>
+                <td>{{ log.model }}</td>
+                <td class="truncate mono">{{ log.result or '-' }}</td>
+                <td>
+                    {% if log.audit_score %}
+                    <span class="score">{{ "%.1f"|format(log.audit_score) }} <span class="star">★</span></span>
+                    {% else %}
+                    <span class="time-ago">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if recent_audits %}
+<div class="alert alert-warning">
+    Last audit found {{ recent_audits|length }} items that could be improved
+    <form action="/audits/run" method="post" style="margin-left: auto;">
+        <button type="submit" class="btn btn-secondary">Run Audit Now</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

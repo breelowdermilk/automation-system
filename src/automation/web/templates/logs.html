@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Processing Logs - Automation Control Panel{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="flex justify-between items-center mb-4">
+        <h2>Processing Logs</h2>
+        <div class="flex gap-2">
+            <select onchange="location.href='?task_type='+this.value">
+                <option value="">All Types</option>
+                <option value="screenshot_rename" {% if filters.task_type == 'screenshot_rename' %}selected{% endif %}>Screenshots</option>
+                <option value="audio_transcription" {% if filters.task_type == 'audio_transcription' %}selected{% endif %}>Audio</option>
+                <option value="inbox_processing" {% if filters.task_type == 'inbox_processing' %}selected{% endif %}>Inbox</option>
+            </select>
+            <select onchange="location.href='?hours='+this.value">
+                <option value="24" {% if filters.hours == 24 %}selected{% endif %}>Last 24h</option>
+                <option value="168" {% if filters.hours == 168 %}selected{% endif %}>Last 7 days</option>
+                <option value="720" {% if filters.hours == 720 %}selected{% endif %}>Last 30 days</option>
+            </select>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>File</th>
+                <th>Model</th>
+                <th>Result</th>
+                <th>Latency</th>
+                <th>Score</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td class="time-ago">{{ log.timestamp }}</td>
+                <td>
+                    {% if log.task_type == 'screenshot_rename' %}📸{% endif %}
+                    {% if log.task_type == 'audio_transcription' %}🎤{% endif %}
+                    {% if log.task_type == 'inbox_processing' %}📥{% endif %}
+                    {{ log.task_type }}
+                </td>
+                <td class="truncate mono" title="{{ log.file_path }}">{{ log.file_path.split('/')[-1] }}</td>
+                <td><span class="badge badge-success">{{ log.model }}</span></td>
+                <td class="truncate mono">{{ log.result or log.error_message or '-' }}</td>
+                <td>{{ "%.1f"|format((log.latency_ms or 0) / 1000) }}s</td>
+                <td>
+                    {% if log.audit_score %}
+                    <span class="score">{{ "%.1f"|format(log.audit_score) }} <span class="star">★</span></span>
+                    {% else %}
+                    <span class="time-ago">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="flex justify-between items-center" style="margin-top: 20px;">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}" class="btn btn-secondary">← Previous</a>
+        {% else %}
+        <span></span>
+        {% endif %}
+        <span class="time-ago">Page {{ page }}</span>
+        <a href="?page={{ page + 1 }}" class="btn btn-secondary">Next →</a>
+    </div>
+</div>
+{% endblock %}

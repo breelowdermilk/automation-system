@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Model Configuration - Automation Control Panel{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Screenshot Renaming</h2>
+    <form action="/models/update" method="post">
+        <input type="hidden" name="task_type" value="screenshot_rename">
+        <div class="flex gap-2">
+            <div class="form-group" style="flex: 1;">
+                <label>Primary Model</label>
+                <select name="model" style="width: 100%;">
+                    <option value="sonnet" {% if config.task_defaults.screenshot_rename.model == 'sonnet' %}selected{% endif %}>Sonnet (Claude Code)</option>
+                    <option value="haiku" {% if config.task_defaults.screenshot_rename.model == 'haiku' %}selected{% endif %}>Haiku (Claude Code)</option>
+                    <option value="opus" {% if config.task_defaults.screenshot_rename.model == 'opus' %}selected{% endif %}>Opus (Claude Code)</option>
+                    <option value="gemini-flash" {% if config.task_defaults.screenshot_rename.model == 'gemini-flash' %}selected{% endif %}>Gemini Flash (OpenRouter)</option>
+                    <option value="gpt4o-mini" {% if config.task_defaults.screenshot_rename.model == 'gpt4o-mini' %}selected{% endif %}>GPT-4o Mini (OpenRouter)</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>Fallback Model</label>
+                <select name="fallback" style="width: 100%;">
+                    <option value="">None</option>
+                    <option value="gemini-flash" {% if config.task_defaults.screenshot_rename.fallback == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
+                    <option value="haiku" {% if config.task_defaults.screenshot_rename.fallback == 'haiku' %}selected{% endif %}>Haiku</option>
+                    <option value="llama" {% if config.task_defaults.screenshot_rename.fallback == 'llama' %}selected{% endif %}>Llama (Local)</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Audio Processing</h2>
+    <form action="/models/update" method="post">
+        <input type="hidden" name="task_type" value="audio_categorization">
+        <div class="flex gap-2">
+            <div class="form-group" style="flex: 1;">
+                <label>Categorization Model</label>
+                <select name="model" style="width: 100%;">
+                    <option value="haiku" {% if config.task_defaults.audio_categorization.model == 'haiku' %}selected{% endif %}>Haiku (Claude Code)</option>
+                    <option value="sonnet" {% if config.task_defaults.audio_categorization.model == 'sonnet' %}selected{% endif %}>Sonnet (Claude Code)</option>
+                    <option value="gemini-flash" {% if config.task_defaults.audio_categorization.model == 'gemini-flash' %}selected{% endif %}>Gemini Flash (OpenRouter)</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>Fallback Model</label>
+                <select name="fallback" style="width: 100%;">
+                    <option value="">None</option>
+                    <option value="llama" {% if config.task_defaults.audio_categorization.fallback == 'llama' %}selected{% endif %}>Llama (Local)</option>
+                    <option value="qwen" {% if config.task_defaults.audio_categorization.fallback == 'qwen' %}selected{% endif %}>Qwen (Local)</option>
+                </select>
+            </div>
+        </div>
+        <p class="time-ago" style="margin: 10px 0;">Transcription always uses local Whisper</p>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Quality Auditing</h2>
+    <form action="/models/update" method="post">
+        <input type="hidden" name="task_type" value="quality_audit">
+        <div class="flex gap-2">
+            <div class="form-group" style="flex: 1;">
+                <label>Audit Model</label>
+                <select name="model" style="width: 100%;">
+                    <option value="opus" {% if config.task_defaults.quality_audit.model == 'opus' %}selected{% endif %}>Opus (Claude Code)</option>
+                    <option value="sonnet" {% if config.task_defaults.quality_audit.model == 'sonnet' %}selected{% endif %}>Sonnet (Claude Code)</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>Sample Size</label>
+                <input type="number" name="sample_size" value="{{ config.task_defaults.quality_audit.sample_size or 20 }}" style="width: 100%;">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+    </form>
+
+    <hr style="border-color: var(--border); margin: 20px 0;">
+
+    <form action="/audits/run" method="post">
+        <button type="submit" class="btn btn-secondary">Run Manual Audit Now</button>
+    </form>
+</div>
+{% endblock %}
