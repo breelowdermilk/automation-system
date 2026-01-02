@@ -286,6 +286,99 @@ def test(model: str, count: int):
 
 
 @cli.command()
+@click.argument("processor")
+@click.argument("files", nargs=-1, required=True)
+def process(processor: str, files: tuple):
+    """Process file(s) with a specific processor.
+
+    \b
+    PROCESSOR: One of screenshot, audio, inbox, heic
+    FILES: One or more file paths to process
+
+    \b
+    Examples:
+      automation process screenshot ~/Desktop/Screenshot.png
+      automation process audio ~/recording.m4a
+      automation process heic ~/Downloads/IMG_1234.HEIC
+
+    \b
+    Designed for Hazel integration - Hazel calls this when files match rules.
+    """
+    from pathlib import Path
+    from datetime import datetime
+    from .processors import ScreenshotProcessor, AudioProcessor, InboxProcessor
+    from .addons import AddonLoader
+    from .watchers import QueuedFile
+
+    config = load_config()
+    db = get_db()
+    router = ModelRouter(config)
+    obsidian_vault = config.get("paths", {}).get("obsidian_vault", "~/Writing")
+
+    # Map short names to processor classes
+    builtin_processors = {
+        "screenshot": ("screenshot_rename", ScreenshotProcessor, {"router": router, "db": db, "config": config}),
+        "audio": ("audio_transcription", AudioProcessor, {"router": router, "db": db, "config": config, "obsidian_vault": str(Path(obsidian_vault).expanduser())}),
+        "inbox": ("inbox_processing", InboxProcessor, {"router": router, "db": db, "config": config, "obsidian_vault": str(Path(obsidian_vault).expanduser())}),
+    }
+
+    # Load addon processors
+    addon_loader = AddonLoader()
+    addon_processors = addon_loader.discover_addons()
+
+    # Find the processor
+    if processor in builtin_processors:
+        task_type, proc_class, kwargs = builtin_processors[processor]
+        proc = proc_class(**kwargs)
+    elif processor in addon_processors:
+        proc = addon_processors[processor](router=router, db=db, config=config)
+    else:
+        available = list(builtin_processors.keys()) + list(addon_processors.keys())
+        click.echo(f"Unknown processor: {processor}")
+        click.echo(f"Available: {', '.join(available)}")
+        return
+
+    # Process each file
+    async def run():
+        import hashlib
+        for file_path in files:
+            path = Path(file_path).expanduser().resolve()
+            if not path.exists():
+                click.echo(f"✗ File not found: {path}")
+                continue
+
+            # Create QueuedFile
+            file_hash = hashlib.md5(str(path).encode()).hexdigest()[:8]
+            queued = QueuedFile(
+                path=str(path),
+                added_at=datetime.now(),
+                file_hash=file_hash,
+            )
+
+            click.echo(f"Processing: {path.name}...")
+
+            try:
+                if hasattr(proc, "process_batch"):
+                    results = await proc.process_batch([queued])
+                    result = results[0] if results else {"success": False, "error": "No result"}
+                elif hasattr(proc, "process"):
+                    result = await proc.process(queued)
+                else:
+                    result = {"success": False, "error": "Processor has no process method"}
+
+                if result.get("success"):
+                    new_name = result.get("new_name") or result.get("note_path") or result.get("output_path") or "done"
+                    click.echo(f"✓ {path.name} → {new_name}")
+                else:
+                    click.echo(f"✗ {path.name}: {result.get('error', 'Unknown error')}")
+
+            except Exception as e:
+                click.echo(f"✗ {path.name}: {e}")
+
+    asyncio.run(run())
+
+
+@cli.command()
 def setup():
     """Initial setup - create directories and config."""
     automation_dir = Path.home() / ".automation"

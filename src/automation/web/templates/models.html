@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Model Configuration - Automation Control Panel{% endblock %}
+{% block title %}Models{% endblock %}
 
 {% block content %}
 <div class="card">
@@ -11,24 +11,26 @@
             <div class="form-group" style="flex: 1;">
                 <label>Primary Model</label>
                 <select name="model" style="width: 100%;">
-                    <option value="sonnet" {% if config.task_defaults.screenshot_rename.model == 'sonnet' %}selected{% endif %}>Sonnet (Claude Code)</option>
-                    <option value="haiku" {% if config.task_defaults.screenshot_rename.model == 'haiku' %}selected{% endif %}>Haiku (Claude Code)</option>
-                    <option value="opus" {% if config.task_defaults.screenshot_rename.model == 'opus' %}selected{% endif %}>Opus (Claude Code)</option>
-                    <option value="gemini-flash" {% if config.task_defaults.screenshot_rename.model == 'gemini-flash' %}selected{% endif %}>Gemini Flash (OpenRouter)</option>
-                    <option value="gpt4o-mini" {% if config.task_defaults.screenshot_rename.model == 'gpt4o-mini' %}selected{% endif %}>GPT-4o Mini (OpenRouter)</option>
+                    <option value="sonnet" {% if config.task_defaults.screenshot_rename.model == 'sonnet' %}selected{% endif %}>Sonnet</option>
+                    <option value="haiku" {% if config.task_defaults.screenshot_rename.model == 'haiku' %}selected{% endif %}>Haiku</option>
+                    <option value="opus" {% if config.task_defaults.screenshot_rename.model == 'opus' %}selected{% endif %}>Opus</option>
+                    <option value="gemini-flash" {% if config.task_defaults.screenshot_rename.model == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
+                    <option value="gpt4o-mini" {% if config.task_defaults.screenshot_rename.model == 'gpt4o-mini' %}selected{% endif %}>GPT-4o Mini</option>
                 </select>
             </div>
             <div class="form-group" style="flex: 1;">
                 <label>Fallback Model</label>
                 <select name="fallback" style="width: 100%;">
-                    <option value="">None</option>
-                    <option value="gemini-flash" {% if config.task_defaults.screenshot_rename.fallback == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
+                    <option value="" {% if not config.task_defaults.screenshot_rename.fallback %}selected{% endif %}>No fallback</option>
+                    <option value="opus" {% if config.task_defaults.screenshot_rename.fallback == 'opus' %}selected{% endif %}>Opus</option>
+                    <option value="sonnet" {% if config.task_defaults.screenshot_rename.fallback == 'sonnet' %}selected{% endif %}>Sonnet</option>
                     <option value="haiku" {% if config.task_defaults.screenshot_rename.fallback == 'haiku' %}selected{% endif %}>Haiku</option>
-                    <option value="llama" {% if config.task_defaults.screenshot_rename.fallback == 'llama' %}selected{% endif %}>Llama (Local)</option>
+                    <option value="gemini-flash" {% if config.task_defaults.screenshot_rename.fallback == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
+                    <option value="gpt4o-mini" {% if config.task_defaults.screenshot_rename.fallback == 'gpt4o-mini' %}selected{% endif %}>GPT-4o Mini</option>
                 </select>
             </div>
         </div>
-        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <button type="submit" class="btn btn-primary">Save</button>
     </form>
 </div>
 
@@ -40,23 +42,54 @@
             <div class="form-group" style="flex: 1;">
                 <label>Categorization Model</label>
                 <select name="model" style="width: 100%;">
-                    <option value="haiku" {% if config.task_defaults.audio_categorization.model == 'haiku' %}selected{% endif %}>Haiku (Claude Code)</option>
-                    <option value="sonnet" {% if config.task_defaults.audio_categorization.model == 'sonnet' %}selected{% endif %}>Sonnet (Claude Code)</option>
-                    <option value="gemini-flash" {% if config.task_defaults.audio_categorization.model == 'gemini-flash' %}selected{% endif %}>Gemini Flash (OpenRouter)</option>
+                    <option value="opus" {% if config.task_defaults.audio_categorization.model == 'opus' %}selected{% endif %}>Opus</option>
+                    <option value="sonnet" {% if config.task_defaults.audio_categorization.model == 'sonnet' %}selected{% endif %}>Sonnet</option>
+                    <option value="haiku" {% if config.task_defaults.audio_categorization.model == 'haiku' %}selected{% endif %}>Haiku</option>
+                    <option value="gemini-flash" {% if config.task_defaults.audio_categorization.model == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
                 </select>
             </div>
             <div class="form-group" style="flex: 1;">
                 <label>Fallback Model</label>
                 <select name="fallback" style="width: 100%;">
-                    <option value="">None</option>
-                    <option value="llama" {% if config.task_defaults.audio_categorization.fallback == 'llama' %}selected{% endif %}>Llama (Local)</option>
-                    <option value="qwen" {% if config.task_defaults.audio_categorization.fallback == 'qwen' %}selected{% endif %}>Qwen (Local)</option>
+                    <option value="" {% if not config.task_defaults.audio_categorization.fallback %}selected{% endif %}>No fallback</option>
+                    <option value="opus" {% if config.task_defaults.audio_categorization.fallback == 'opus' %}selected{% endif %}>Opus</option>
+                    <option value="sonnet" {% if config.task_defaults.audio_categorization.fallback == 'sonnet' %}selected{% endif %}>Sonnet</option>
+                    <option value="haiku" {% if config.task_defaults.audio_categorization.fallback == 'haiku' %}selected{% endif %}>Haiku</option>
+                    <option value="gemini-flash" {% if config.task_defaults.audio_categorization.fallback == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
                 </select>
             </div>
         </div>
-        <p class="time-ago" style="margin: 10px 0;">Transcription always uses local Whisper</p>
-        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <p class="time-ago" style="margin: 10px 0;">Transcription uses local Whisper</p>
+        <button type="submit" class="btn btn-primary">Save</button>
     </form>
 </div>
 
+<div class="card">
+    <h2>Inbox Processing</h2>
+    <form action="/models/update" method="post">
+        <input type="hidden" name="task_type" value="inbox_processing">
+        <div class="flex gap-2">
+            <div class="form-group" style="flex: 1;">
+                <label>Primary Model</label>
+                <select name="model" style="width: 100%;">
+                    <option value="opus" {% if config.task_defaults.inbox_processing.model == 'opus' %}selected{% endif %}>Opus</option>
+                    <option value="sonnet" {% if config.task_defaults.inbox_processing.model == 'sonnet' %}selected{% endif %}>Sonnet</option>
+                    <option value="haiku" {% if config.task_defaults.inbox_processing.model == 'haiku' %}selected{% endif %}>Haiku</option>
+                    <option value="gemini-flash" {% if config.task_defaults.inbox_processing.model == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
+                </select>
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label>Fallback Model</label>
+                <select name="fallback" style="width: 100%;">
+                    <option value="" {% if not config.task_defaults.inbox_processing.fallback %}selected{% endif %}>No fallback</option>
+                    <option value="opus" {% if config.task_defaults.inbox_processing.fallback == 'opus' %}selected{% endif %}>Opus</option>
+                    <option value="sonnet" {% if config.task_defaults.inbox_processing.fallback == 'sonnet' %}selected{% endif %}>Sonnet</option>
+                    <option value="haiku" {% if config.task_defaults.inbox_processing.fallback == 'haiku' %}selected{% endif %}>Haiku</option>
+                    <option value="gemini-flash" {% if config.task_defaults.inbox_processing.fallback == 'gemini-flash' %}selected{% endif %}>Gemini Flash</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+    </form>
+</div>
 {% endblock %}
