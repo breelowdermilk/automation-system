@@ -85,10 +85,11 @@ def status():
     today = db.get_today_summary()
 
     click.echo("\n📊 Today's Activity")
-    click.echo(f"   Screenshots: {today.get('screenshots', 0)}")
-    click.echo(f"   Audio Memos: {today.get('audio', 0)}")
-    click.echo(f"   Inbox Files: {today.get('inbox', 0)}")
-    click.echo(f"   Success Rate: {today.get('success_rate', 0):.1f}%")
+    click.echo(f"   Screenshots: {today.get('screenshots') or 0}")
+    click.echo(f"   Audio Memos: {today.get('audio') or 0}")
+    click.echo(f"   Inbox Files: {today.get('inbox') or 0}")
+    success_rate = today.get('success_rate') or 0
+    click.echo(f"   Success Rate: {success_rate:.1f}%")
 
     # Model stats
     model_stats = db.get_stats_by_model(days=7)
@@ -198,10 +199,9 @@ def config():
 @cli.command()
 @click.option("--port", "-p", default=8420, help="Port to run on")
 @click.option("--host", "-h", default="127.0.0.1", help="Host to bind to")
-def web(port: int, host: str):
+@click.option("--native", is_flag=True, help="Open in native window (requires pywebview)")
+def web(port: int, host: str, native: bool):
     """Start the web control panel."""
-    click.echo(f"Starting web control panel at http://{host}:{port}")
-
     config = load_config()
     db = get_db()
     router = ModelRouter(config)
@@ -210,7 +210,42 @@ def web(port: int, host: str):
     from .web.app import init_app, run_server
 
     init_app(db, router, auditor, config, get_config_path())
-    run_server(host=host, port=port)
+
+    if native:
+        # Native window mode using pywebview
+        try:
+            import webview
+            import threading
+
+            # Start server in background thread
+            server_thread = threading.Thread(
+                target=run_server,
+                kwargs={"host": host, "port": port},
+                daemon=True,
+            )
+            server_thread.start()
+
+            # Give server time to start
+            import time
+            time.sleep(0.5)
+
+            # Create native window
+            click.echo("Opening native window...")
+            webview.create_window(
+                "Automation Control",
+                f"http://{host}:{port}",
+                width=1000,
+                height=700,
+            )
+            webview.start()
+
+        except ImportError:
+            click.echo("pywebview not installed. Run: pip install pywebview")
+            click.echo(f"Falling back to browser mode at http://{host}:{port}")
+            run_server(host=host, port=port)
+    else:
+        click.echo(f"Starting web control panel at http://{host}:{port}")
+        run_server(host=host, port=port)
 
 
 @cli.command()

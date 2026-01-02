@@ -20,6 +20,7 @@ from .watchers import (
 )
 from .processors import ScreenshotProcessor, AudioProcessor, InboxProcessor
 from .quality_audit import QualityAuditor, ScheduledAuditor
+from .addons import AddonLoader
 
 # Configure logging
 logging.basicConfig(
@@ -60,6 +61,11 @@ class AutomationDaemon:
         # Quality auditor
         self.auditor = QualityAuditor(self.router, self.db, config)
         self.scheduled_auditor = ScheduledAuditor(self.auditor, config)
+
+        # Load addon processors
+        self.addon_loader = AddonLoader()
+        self.addon_processors = self.addon_loader.discover_addons()
+        self.addon_instances: Dict[str, Any] = {}
 
         # Watcher manager
         self.watcher_manager = WatcherManager(config)
@@ -105,7 +111,75 @@ class AutomationDaemon:
         await self.scheduled_auditor.stop()
 
     def _setup_watchers(self):
-        """Set up file watchers based on config."""
+        """Set up file watchers from config."""
+        # Set event loop FIRST so handlers can use it
+        self.watcher_manager.set_event_loop(self.loop)
+
+        # Map processor names to their processing callbacks
+        processor_callbacks = {
+            "screenshot_rename": self._process_screenshots,
+            "audio_transcription": self._process_audio,
+            "inbox_processing": self._process_inbox,
+        }
+
+        # Get watchers from new config format
+        watchers_config = self.config.get("watchers", {})
+
+        # If no watchers config, fall back to legacy format
+        if not watchers_config:
+            self._setup_watchers_legacy()
+            return
+
+        for name, watcher_cfg in watchers_config.items():
+            # Skip disabled watchers
+            if not watcher_cfg.get("enabled", True):
+                logger.info(f"Skipping disabled watcher: {name}")
+                continue
+
+            path = watcher_cfg.get("path")
+            if not path:
+                logger.warning(f"Watcher {name} has no path configured")
+                continue
+
+            # Expand path
+            expanded_path = str(Path(path).expanduser())
+
+            # Get processor callback
+            processor_name = watcher_cfg.get("processor")
+            processor_callback = processor_callbacks.get(processor_name)
+
+            if not processor_callback:
+                # Check for addon processors
+                if processor_name in self.addon_processors:
+                    processor_callback = self._make_addon_callback(processor_name, watcher_cfg)
+                    if not processor_callback:
+                        continue
+                else:
+                    logger.warning(f"Unknown processor for {name}: {processor_name}")
+                    continue
+
+            # Build batch config
+            batch_config = BatchConfig(
+                enabled=watcher_cfg.get("batch_enabled", True),
+                max_batch_size=watcher_cfg.get("batch_size", 10),
+                max_wait_seconds=watcher_cfg.get("batch_wait_seconds", 60),
+            )
+
+            # Parse extensions
+            extensions = watcher_cfg.get("extensions", [])
+            file_extensions = set(extensions) if extensions else None
+
+            # Add watcher
+            self.watcher_manager.add_watcher(
+                path=expanded_path,
+                processor=processor_callback,
+                batch_config=batch_config,
+                file_extensions=file_extensions,
+            )
+            logger.info(f"Watching {name}: {expanded_path}")
+
+    def _setup_watchers_legacy(self):
+        """Legacy watcher setup for backward compatibility."""
         paths = self.config.get("paths", {})
         batching = self.config.get("batching", {})
 
@@ -131,7 +205,7 @@ class AutomationDaemon:
             self.watcher_manager.add_watcher(
                 path=str(Path(audio_path).expanduser()),
                 processor=self._process_audio,
-                batch_config=BatchConfig(enabled=False),  # Process immediately
+                batch_config=BatchConfig(enabled=False),
                 file_extensions={".m4a", ".mp3", ".wav", ".aac"},
             )
             logger.info(f"Watching audio: {audio_path}")
@@ -152,8 +226,38 @@ class AutomationDaemon:
         )
         logger.info(f"Watching inbox: {inbox_path}")
 
-        # Set event loop for async processing
-        self.watcher_manager.set_event_loop(self.loop)
+    def _make_addon_callback(self, processor_name: str, watcher_cfg: Dict[str, Any]):
+        """Create a processing callback for an addon processor."""
+        # Create processor instance if not already created
+        if processor_name not in self.addon_instances:
+            output_path = watcher_cfg.get("output_path")
+            instance = self.addon_loader.create_processor(
+                processor_name,
+                router=self.router,
+                db=self.db,
+                config=self.config,
+                output_path=output_path,
+            )
+            if instance:
+                self.addon_instances[processor_name] = instance
+            else:
+                logger.error(f"Failed to create addon processor: {processor_name}")
+                return None
+
+        processor = self.addon_instances[processor_name]
+
+        async def callback(files: List[QueuedFile]):
+            try:
+                results = await processor.process_batch(files)
+                for result in results:
+                    if result.get("success"):
+                        logger.info(f"Addon {processor_name}: processed {result.get('original_path', 'file')}")
+                    else:
+                        logger.error(f"Addon {processor_name} failed: {result.get('error')}")
+            except Exception as e:
+                logger.error(f"Addon {processor_name} error: {e}")
+
+        return callback
 
     async def _process_screenshots(self, files: List[QueuedFile]):
         """Process queued screenshots."""

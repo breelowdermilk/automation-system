@@ -1,0 +1,66 @@
+<div class="card">
+    <h2>Today's Activity</h2>
+    <div class="stat-grid">
+        <div class="stat-box">
+            <div class="number">{{ today.screenshots or 0 }}</div>
+            <div class="label">Screenshots</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ today.audio or 0 }}</div>
+            <div class="label">Audio</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ today.inbox or 0 }}</div>
+            <div class="label">Inbox</div>
+        </div>
+        <div class="stat-box">
+            <div class="number">{{ "%.0f"|format(today.success_rate or 0) }}%</div>
+            <div class="label">Success</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Model Usage (7 days)</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Model</th>
+                <th>Backend</th>
+                <th>Requests</th>
+                <th>Success</th>
+                <th>Latency</th>
+                <th>Score</th>
+                <th>Cost</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for stat in model_stats %}
+            <tr>
+                <td><strong>{{ stat.model }}</strong></td>
+                <td><span class="badge badge-success">{{ stat.backend }}</span></td>
+                <td class="mono">{{ stat.total_requests }}</td>
+                <td class="mono">{{ "%.0f"|format(stat.success_rate or 0) }}%</td>
+                <td class="mono">{{ "%.1f"|format((stat.avg_latency_ms or 0) / 1000) }}s</td>
+                <td>
+                    {% if stat.avg_audit_score %}
+                    <span class="score">
+                        {{ "%.1f"|format(stat.avg_audit_score) }}
+                        <span class="star">★</span>
+                    </span>
+                    {% else %}
+                    <span class="time-ago">-</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if stat.total_cost_usd %}
+                    <span class="mono">${{ "%.3f"|format(stat.total_cost_usd) }}</span>
+                    {% else %}
+                    <span class="badge badge-success">$0</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

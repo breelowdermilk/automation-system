@@ -14,6 +14,7 @@ import logging
 from .model_router import ModelRouter, ModelResponse
 from .database import Database, ProcessingLogEntry
 from .watchers import QueuedFile
+from .context_search import VaultContextSearch
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +75,37 @@ Content:
 Return ONLY the JSON."""
 
 
+TRANSCRIPT_REFINEMENT_PROMPT = """You are refining a voice memo transcription for accuracy.
+
+The original transcript was created by Whisper speech-to-text, which may have:
+- Misheard proper nouns and character names
+- Missed project-specific terminology
+- Made errors on uncommon words
+
+PROJECT CONTEXT (use this to correct errors):
+{context}
+
+ORIGINAL TRANSCRIPT:
+{transcript}
+
+Please output a CORRECTED version of the transcript, fixing:
+1. Proper nouns and character names (match them to names in the context above)
+2. Project-specific terminology (use exact terms from context)
+3. Obvious mishearings that don't match the context
+
+RULES:
+- Only fix clear errors, don't rewrite the content
+- Preserve the original meaning and flow
+- If unsure, keep the original word
+
+Output ONLY the corrected transcript, nothing else."""
+
+
 class ScreenshotProcessor:
-    """Processes screenshots - renames them with descriptive names."""
+    """Processes screenshots - renames them with descriptive names using Claude Code CLI."""
+
+    # Path to the claude-image-renamer script
+    RENAMER_SCRIPT = Path(__file__).parent.parent.parent / "vendor" / "claude-image-renamer" / "claude-image-renamer.sh"
 
     def __init__(
         self,
@@ -91,134 +121,138 @@ class ScreenshotProcessor:
     async def process_batch(self, files: List[QueuedFile]) -> List[Dict[str, Any]]:
         """Process a batch of screenshots."""
         results = []
-
-        if len(files) == 1:
-            # Single file - use simple prompt
-            result = await self._process_single(files[0])
-            results.append(result)
-        else:
-            # Multiple files - batch process
-            results = await self._process_multiple(files)
-
-        return results
-
-    async def _process_single(self, file: QueuedFile) -> Dict[str, Any]:
-        """Process a single screenshot."""
-        model = self.router.get_model_for_task(self.task_type)
-
-        response = await self.router.process(
-            prompt=SCREENSHOT_RENAME_PROMPT,
-            image_path=file.path,
-            model_name=model,
-            task_type=self.task_type,
-        )
-
-        result = {
-            "original_path": file.path,
-            "success": response.success,
-            "model": response.model,
-            "latency_ms": response.latency_ms,
-        }
-
-        if response.success:
-            new_name = self._sanitize_filename(response.text)
-            new_path = self._rename_file(file.path, new_name)
-            result["new_path"] = new_path
-            result["new_name"] = new_name
-        else:
-            result["error"] = response.error
-
-        # Log to database
-        self._log_processing(file, response, result.get("new_name"))
-
-        return result
-
-    async def _process_multiple(self, files: List[QueuedFile]) -> List[Dict[str, Any]]:
-        """Process multiple screenshots in a batch."""
-        model = self.router.get_model_for_task(self.task_type)
-        results = []
-
-        # For now, process one at a time since vision batching is complex
-        # TODO: Implement true batch processing when supported
         for file in files:
             result = await self._process_single(file)
             results.append(result)
-            # Small delay to avoid rate limiting
-            await asyncio.sleep(0.5)
-
+            # Small delay between files
+            await asyncio.sleep(1)
         return results
 
-    def _sanitize_filename(self, text: str) -> str:
-        """Clean up the model's response into a valid filename."""
-        # Remove quotes, extra whitespace
-        name = text.strip().strip('"\'')
+    async def _process_single(self, file: QueuedFile) -> Dict[str, Any]:
+        """Process a single screenshot using claude-image-renamer script."""
+        start_time = datetime.now()
 
-        # Convert to lowercase, replace spaces with hyphens
-        name = name.lower().replace(" ", "-")
+        result = {
+            "original_path": file.path,
+            "success": False,
+        }
 
-        # Remove invalid characters
-        name = re.sub(r'[^a-z0-9\-]', '', name)
+        # Check if file still exists
+        if not os.path.exists(file.path):
+            result["error"] = "File no longer exists"
+            self._log_processing(file, None, success=False, error="File not found")
+            return result
 
-        # Remove multiple consecutive hyphens
-        name = re.sub(r'-+', '-', name)
-
-        # Trim to reasonable length
-        name = name[:50]
-
-        # Ensure it's not empty
-        if not name:
-            name = f"screenshot-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-
-        return name
-
-    def _rename_file(self, original_path: str, new_name: str) -> str:
-        """Rename the file, handling collisions."""
-        path = Path(original_path)
-        extension = path.suffix
-        directory = path.parent
-
-        new_path = directory / f"{new_name}{extension}"
-
-        # Handle collision
-        counter = 1
-        while new_path.exists():
-            new_path = directory / f"{new_name}-{counter}{extension}"
-            counter += 1
-
+        # Call the shell script
         try:
-            path.rename(new_path)
-            logger.info(f"Renamed: {path.name} -> {new_path.name}")
-            return str(new_path)
+            loop = asyncio.get_event_loop()
+            proc_result = await loop.run_in_executor(
+                None,
+                lambda: subprocess.run(
+                    [str(self.RENAMER_SCRIPT), file.path],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,  # 2 minute timeout
+                ),
+            )
+
+            latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+            result["latency_ms"] = latency_ms
+
+            if proc_result.returncode == 0:
+                # Parse output to find new filename
+                output = proc_result.stdout + proc_result.stderr
+                new_name = self._extract_new_filename(output, file.path)
+
+                if new_name:
+                    result["success"] = True
+                    result["new_name"] = new_name
+                    result["model"] = "claude-code"
+                    logger.info(f"Renamed: {Path(file.path).name} -> {new_name}")
+                else:
+                    result["error"] = "Could not determine new filename"
+                    logger.warning(f"Script succeeded but couldn't parse new name from output")
+            else:
+                result["error"] = proc_result.stderr[:500] if proc_result.stderr else "Script failed"
+                logger.error(f"Rename script failed: {result['error']}")
+
+        except subprocess.TimeoutExpired:
+            result["error"] = "Script timed out"
+            logger.error(f"Rename script timed out for {file.path}")
         except Exception as e:
-            logger.error(f"Failed to rename {path}: {e}")
-            return original_path
+            result["error"] = str(e)
+            logger.error(f"Error running rename script: {e}")
+
+        # Log to database
+        self._log_processing(
+            file,
+            result.get("latency_ms"),
+            success=result["success"],
+            new_name=result.get("new_name"),
+            error=result.get("error"),
+        )
+
+        return result
+
+    def _extract_new_filename(self, output: str, original_path: str) -> Optional[str]:
+        """Extract the new filename from script output."""
+        # The script echoes the new filename at the end
+        # Also look for mv commands in the output
+        lines = output.strip().split('\n')
+
+        # Check last few lines for the filename
+        for line in reversed(lines[-10:]):
+            line = line.strip()
+            # Skip empty lines and common output
+            if not line or line.startswith('Uploading') or line.startswith('Warning'):
+                continue
+            # Look for .png, .jpg etc
+            if any(ext in line.lower() for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                # Extract just the filename if it's a path
+                if '/' in line:
+                    return Path(line).name
+                return line
+
+        # Check if original file was moved by looking for what exists
+        original = Path(original_path)
+        if not original.exists():
+            # File was moved, try to find it in the same directory
+            directory = original.parent
+            # Look for recently modified files
+            for f in directory.glob(f"*.{original.suffix[1:]}"):
+                if f.name != original.name:
+                    return f.name
+
+        return None
 
     def _log_processing(
         self,
         file: QueuedFile,
-        response: ModelResponse,
-        new_name: Optional[str],
+        latency_ms: Optional[int],
+        success: bool,
+        new_name: Optional[str] = None,
+        error: Optional[str] = None,
     ):
         """Log the processing to database."""
         entry = ProcessingLogEntry(
             task_type=self.task_type,
             file_path=file.path,
             file_hash=file.file_hash,
-            model=response.model,
-            backend=response.backend,
+            model="claude-code",
+            backend="claude-cli",
             result=new_name,
-            success=response.success,
-            error_message=response.error,
-            latency_ms=response.latency_ms,
-            input_tokens=response.input_tokens,
-            output_tokens=response.output_tokens,
-            cost_usd=response.cost_usd,
+            success=success,
+            error_message=error,
+            latency_ms=latency_ms,
+            input_tokens=None,
+            output_tokens=None,
+            cost_usd=0,  # Claude Code is subscription-based
         )
         self.db.log_processing(entry)
 
 
 class AudioProcessor:
-    """Processes audio files - transcribes and categorizes."""
+    """Processes audio files - transcribes and categorizes with optional two-pass refinement."""
 
     def __init__(
         self,
@@ -235,6 +269,14 @@ class AudioProcessor:
             "whisper_model", "base.en"
         )
 
+        # Two-pass transcription settings
+        self.two_pass_enabled = config.get("task_defaults", {}).get(
+            "audio_transcription", {}
+        ).get("two_pass", True)
+
+        # Context search for refinement
+        self.context_search = VaultContextSearch(obsidian_vault)
+
     async def process_batch(self, files: List[QueuedFile]) -> List[Dict[str, Any]]:
         """Process audio files (typically one at a time)."""
         results = []
@@ -244,18 +286,34 @@ class AudioProcessor:
         return results
 
     async def _process_single(self, file: QueuedFile) -> Dict[str, Any]:
-        """Process a single audio file."""
+        """Process a single audio file with optional two-pass transcription."""
         result = {
             "original_path": file.path,
             "success": False,
         }
 
-        # Step 1: Transcribe
-        transcript = await self._transcribe(file.path)
-        if not transcript:
+        # Step 1: Transcribe with Whisper
+        raw_transcript = await self._transcribe(file.path)
+        if not raw_transcript:
             result["error"] = "Transcription failed"
             self._log_processing(file, None, None, success=False, error="Transcription failed")
             return result
+
+        result["raw_transcript"] = raw_transcript
+        transcript = raw_transcript
+
+        # Step 1.5: Two-pass refinement (if enabled)
+        if self.two_pass_enabled:
+            project = self.context_search.detect_project(raw_transcript)
+            if project:
+                context = self.context_search.get_project_context(project)
+                if context:
+                    refined = await self._refine_transcript(raw_transcript, context)
+                    if refined:
+                        transcript = refined
+                        result["was_refined"] = True
+                        result["detected_project"] = project
+                        logger.info(f"Refined transcript for project: {project}")
 
         result["transcript"] = transcript
 
@@ -341,6 +399,47 @@ class AudioProcessor:
 
         except Exception as e:
             logger.error(f"Transcription error: {e}")
+            return None
+
+    async def _refine_transcript(self, transcript: str, context: str) -> Optional[str]:
+        """
+        Pass 2: Use Claude to refine transcript with project context.
+
+        Args:
+            transcript: Raw transcript from Whisper
+            context: Project context (character names, terminology, etc.)
+
+        Returns:
+            Refined transcript or None if refinement failed
+        """
+        try:
+            model = self.router.get_model_for_task("transcript_refinement")
+            if not model:
+                model = "haiku"  # Default to fast model for refinement
+
+            response = await self.router.process(
+                prompt=TRANSCRIPT_REFINEMENT_PROMPT.format(
+                    context=context,
+                    transcript=transcript,
+                ),
+                model_name=model,
+                task_type="transcript_refinement",
+            )
+
+            if response.success and response.text:
+                refined = response.text.strip()
+                # Only use if it's substantially similar (avoid hallucinations)
+                if len(refined) > len(transcript) * 0.5 and len(refined) < len(transcript) * 2:
+                    return refined
+                else:
+                    logger.warning("Refined transcript length differs too much, using original")
+                    return None
+            else:
+                logger.warning(f"Transcript refinement failed: {response.error}")
+                return None
+
+        except Exception as e:
+            logger.error(f"Transcript refinement error: {e}")
             return None
 
     async def _create_obsidian_note(

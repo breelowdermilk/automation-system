@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+<style>
+    .page-header {
+        margin-bottom: 24px;
+    }
+
+    .page-title {
+        font-size: 22px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+
+    .page-subtitle {
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+
+    .watcher-card {
+        background: var(--bg-tertiary);
+        border-radius: var(--radius-sm);
+        padding: 16px;
+        margin-bottom: 12px;
+    }
+
+    .watcher-card.disabled {
+        opacity: 0.5;
+    }
+
+    .watcher-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .watcher-name {
+        font-weight: 600;
+        font-size: 14px;
+    }
+
+    .watcher-controls {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .toggle-switch {
+        position: relative;
+        width: 40px;
+        height: 24px;
+        cursor: pointer;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-track {
+        position: absolute;
+        inset: 0;
+        background: var(--bg);
+        border-radius: 12px;
+        transition: background 0.2s;
+    }
+
+    .toggle-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 20px;
+        height: 20px;
+        background: var(--text-secondary);
+        border-radius: 50%;
+        transition: all 0.2s;
+    }
+
+    input:checked + .toggle-track {
+        background: var(--success);
+    }
+
+    input:checked + .toggle-track .toggle-thumb {
+        transform: translateX(16px);
+        background: white;
+    }
+
+    .btn-icon {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border-radius: 4px;
+        background: transparent;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-icon:hover {
+        background: rgba(255,69,58,0.15);
+        color: var(--danger);
+    }
+
+    .watcher-path {
+        font-family: 'SF Mono', Monaco, monospace;
+        font-size: 12px;
+        color: var(--text-secondary);
+        background: var(--bg);
+        padding: 6px 10px;
+        border-radius: 4px;
+        margin-bottom: 12px;
+    }
+
+    .watcher-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        font-size: 12px;
+    }
+
+    .meta-label {
+        color: var(--text-secondary);
+        margin-bottom: 2px;
+    }
+
+    .extension-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+
+    .extension-tag {
+        background: var(--bg);
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: 'SF Mono', Monaco, monospace;
+        font-size: 11px;
+        color: var(--text-secondary);
+    }
+
+    .restart-notice {
+        background: rgba(255,214,10,0.1);
+        border: 1px solid rgba(255,214,10,0.2);
+        border-radius: var(--radius-sm);
+        padding: 12px 16px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: var(--text-secondary);
+    }
+
+    .restart-notice strong {
+        color: var(--warning);
+    }
+
+    .add-form {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+    }
+
+    @media (max-width: 768px) {
+        .add-form {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .add-form .full-width {
+        grid-column: 1 / -1;
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 32px;
+        color: var(--text-secondary);
+        font-size: 13px;
+    }
+</style>
+
+<div class="page-header">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Manage watched folders and processors</p>
+</div>
+
+<div class="restart-notice">
+    <strong>Note:</strong> Changes require daemon restart: <code>pkill -f "automation start" && automation start</code>
+</div>
+
+<div class="card">
+    <h2>Watched Folders</h2>
+
+    {% if watchers %}
+    {% for name, watcher in watchers.items() %}
+    <div class="watcher-card {% if not watcher.enabled %}disabled{% endif %}">
+        <div class="watcher-header">
+            <div>
+                <span class="watcher-name">{{ name }}</span>
+                <span class="badge {% if watcher.enabled %}badge-success{% else %}badge-warning{% endif %}" style="margin-left: 8px;">
+                    {{ 'Active' if watcher.enabled else 'Paused' }}
+                </span>
+            </div>
+            <div class="watcher-controls">
+                <form action="/settings/watcher/{{ name }}/toggle" method="post" style="display: contents;">
+                    <input type="hidden" name="enabled" value="{{ 'false' if watcher.enabled else 'true' }}">
+                    <label class="toggle-switch">
+                        <input type="checkbox" {{ 'checked' if watcher.enabled else '' }} onchange="this.form.submit()">
+                        <div class="toggle-track">
+                            <div class="toggle-thumb"></div>
+                        </div>
+                    </label>
+                </form>
+                <form action="/settings/watcher/{{ name }}/delete" method="post" style="display: contents;"
+                      onsubmit="return confirm('Delete {{ name }}?');">
+                    <button type="submit" class="btn-icon" title="Delete">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                        </svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="watcher-path">{{ watcher.path }}</div>
+
+        <div class="watcher-meta">
+            <div>
+                <div class="meta-label">Processor</div>
+                <div>{{ watcher.processor }}</div>
+            </div>
+            <div>
+                <div class="meta-label">Extensions</div>
+                <div class="extension-tags">
+                    {% for ext in watcher.extensions %}
+                    <span class="extension-tag">{{ ext }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div>
+                <div class="meta-label">Batching</div>
+                <div>
+                    {% if watcher.batch_enabled %}
+                    {{ watcher.batch_size }} files / {{ watcher.batch_wait_seconds }}s
+                    {% else %}
+                    Immediate
+                    {% endif %}
+                </div>
+            </div>
+            {% if watcher.output_path %}
+            <div>
+                <div class="meta-label">Output</div>
+                <div class="mono">{{ watcher.output_path }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty-state">No watchers configured</div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Add Watcher</h2>
+
+    <form action="/settings/watcher/add" method="post" class="add-form">
+        <div class="form-group">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" required placeholder="photos">
+        </div>
+
+        <div class="form-group">
+            <label for="path">Path</label>
+            <input type="text" id="path" name="path" required placeholder="~/Downloads">
+        </div>
+
+        <div class="form-group">
+            <label for="processor">Processor</label>
+            <select id="processor" name="processor" required>
+                {% for proc in available_processors %}
+                <option value="{{ proc }}">{{ proc }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="extensions">Extensions</label>
+            <input type="text" id="extensions" name="extensions" required placeholder=".png, .jpg">
+        </div>
+
+        <div class="form-group">
+            <label for="output_path">Output (optional)</label>
+            <input type="text" id="output_path" name="output_path" placeholder="Leave empty for in-place">
+        </div>
+
+        <div class="form-group" style="display: flex; align-items: flex-end;">
+            <div class="checkbox-group">
+                <input type="checkbox" id="batch_enabled" name="batch_enabled" checked>
+                <label for="batch_enabled">Enable batching</label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="batch_size">Batch size</label>
+            <input type="number" id="batch_size" name="batch_size" value="10" min="1" max="50">
+        </div>
+
+        <div class="form-group">
+            <label for="batch_wait">Wait (sec)</label>
+            <input type="number" id="batch_wait" name="batch_wait" value="60" min="5" max="300">
+        </div>
+
+        <div class="form-group full-width">
+            <button type="submit" class="btn btn-primary">Add Watcher</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Processors</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>screenshot_rename</code></td>
+                <td><span class="badge badge-success">Built-in</span></td>
+                <td>AI-powered image renaming</td>
+            </tr>
+            <tr>
+                <td><code>audio_transcription</code></td>
+                <td><span class="badge badge-success">Built-in</span></td>
+                <td>Whisper transcription + Obsidian notes</td>
+            </tr>
+            <tr>
+                <td><code>inbox_processing</code></td>
+                <td><span class="badge badge-success">Built-in</span></td>
+                <td>Document categorization</td>
+            </tr>
+            {% for name in addon_processors %}
+            <tr>
+                <td><code>{{ name }}</code></td>
+                <td><span class="badge badge-warning">Addon</span></td>
+                <td>Custom processor</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p style="margin-top: 14px; color: var(--text-secondary); font-size: 12px;">
+        Add custom processors to <code>~/.automation/addons/</code>
+    </p>
+</div>
+{% endblock %}

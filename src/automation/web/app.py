@@ -233,6 +233,99 @@ async def stats_page(request: Request, days: int = 7):
     })
 
 
+# ============== Settings ==============
+
+def _get_available_processors():
+    """Get list of available processors (built-in + addons)."""
+    builtin = ["screenshot_rename", "audio_transcription", "inbox_processing"]
+
+    # Check for addon processors
+    addons_dir = Path.home() / ".automation" / "addons"
+    addon_names = []
+    if addons_dir.exists():
+        for py_file in addons_dir.glob("*.py"):
+            if not py_file.name.startswith("_"):
+                # Use filename as processor name (will be refined when addon loader exists)
+                addon_names.append(py_file.stem)
+
+    return builtin, addon_names
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    """Settings page for managing watched folders."""
+    watchers = config.get("watchers", {})
+    builtin_processors, addon_processors = _get_available_processors()
+
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "watchers": watchers,
+        "available_processors": builtin_processors + addon_processors,
+        "addon_processors": addon_processors,
+    })
+
+
+@app.post("/settings/watcher/add")
+async def add_watcher(
+    name: str = Form(...),
+    path: str = Form(...),
+    processor: str = Form(...),
+    extensions: str = Form(...),
+    output_path: Optional[str] = Form(None),
+    batch_enabled: bool = Form(False),
+    batch_size: int = Form(10),
+    batch_wait: int = Form(60),
+):
+    """Add a new watched folder."""
+    global config
+
+    if "watchers" not in config:
+        config["watchers"] = {}
+
+    # Parse extensions
+    ext_list = [e.strip() for e in extensions.split(",") if e.strip()]
+
+    # Create watcher config
+    config["watchers"][name] = {
+        "enabled": True,
+        "path": path,
+        "extensions": ext_list,
+        "processor": processor,
+        "batch_enabled": batch_enabled,
+        "batch_size": batch_size,
+        "batch_wait_seconds": batch_wait,
+        "output_path": output_path if output_path else None,
+    }
+
+    _save_config()
+
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@app.post("/settings/watcher/{name}/toggle")
+async def toggle_watcher(name: str, enabled: str = Form(...)):
+    """Enable or disable a watcher."""
+    global config
+
+    if "watchers" in config and name in config["watchers"]:
+        config["watchers"][name]["enabled"] = enabled.lower() == "true"
+        _save_config()
+
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@app.post("/settings/watcher/{name}/delete")
+async def delete_watcher(name: str):
+    """Delete a watched folder."""
+    global config
+
+    if "watchers" in config and name in config["watchers"]:
+        del config["watchers"][name]
+        _save_config()
+
+    return RedirectResponse(url="/settings", status_code=303)
+
+
 # ============== API Endpoints ==============
 
 @app.get("/api/stats")

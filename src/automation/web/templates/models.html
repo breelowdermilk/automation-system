@@ -59,30 +59,4 @@
     </form>
 </div>
 
-<div class="card">
-    <h2>Quality Auditing</h2>
-    <form action="/models/update" method="post">
-        <input type="hidden" name="task_type" value="quality_audit">
-        <div class="flex gap-2">
-            <div class="form-group" style="flex: 1;">
-                <label>Audit Model</label>
-                <select name="model" style="width: 100%;">
-                    <option value="opus" {% if config.task_defaults.quality_audit.model == 'opus' %}selected{% endif %}>Opus (Claude Code)</option>
-                    <option value="sonnet" {% if config.task_defaults.quality_audit.model == 'sonnet' %}selected{% endif %}>Sonnet (Claude Code)</option>
-                </select>
-            </div>
-            <div class="form-group" style="flex: 1;">
-                <label>Sample Size</label>
-                <input type="number" name="sample_size" value="{{ config.task_defaults.quality_audit.sample_size or 20 }}" style="width: 100%;">
-            </div>
-        </div>
-        <button type="submit" class="btn btn-primary">Save Changes</button>
-    </form>
-
-    <hr style="border-color: var(--border); margin: 20px 0;">
-
-    <form action="/audits/run" method="post">
-        <button type="submit" class="btn btn-secondary">Run Manual Audit Now</button>
-    </form>
-</div>
 {% endblock %}
